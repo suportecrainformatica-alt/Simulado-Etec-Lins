@@ -176,5 +176,98 @@ export const presetProvas = {
     "materia": "Geografia",
     "explicacao": "A energia eólica provém do movimento mecânico contínuo das massas de ar (ventos), sendo inesgotável, limpa e renovável, em contraponto direta aos combustíveis fósseis tradicionais."
   }
+]`,
+
+  prova2026S1: `[
+  {
+    "numero": 1,
+    "enunciado": "(Vestibulinho ETEC - 2026/1) A Floresta Amazônica possui extrema importância climática global por meio do mecanismo de 'Rios Voadores', que consiste em grandes correntes aéreas de vapor de água. Esse vapor d'água é originado principalmente de qual processo biológico das árvores da floresta?",
+    "alternativas": {
+      "A": "Transpiração celular vegetal (Evapotranspiração)",
+      "B": "Micro-combustão fotoquímica das copas",
+      "C": "Sublimação mineral das raízes profundas",
+      "D": "Respiração anaeróbia mitocondrial",
+      "E": "Fissão hídrica da clorofila induzida"
+    },
+    "respostaCorreta": "A",
+    "materia": "Ciências da Natureza",
+    "explicacao": "A evapotranspiração é o processo conjunto de evaporação da água do solo e transpiração das plantas. Na Amazônia, o volume de vapor d'água devolvido pelas árvores para a atmosfera gera as imensas massas de ar úmido conhecidas como rios voadores."
+  },
+  {
+    "numero": 2,
+    "enunciado": "(Vestibulinho ETEC - 2026/1) Maria deseja revestir o piso retangular de sua cozinha de 4 metros de comprimento por 3 metros de largura com lajotas quadradas de 50 cm (0,5 metros) de lado. Sem considerar perdas por corte, quantas lajotas serão necessárias para cobrir perfeitamente o piso?",
+    "alternativas": {
+      "A": "12 lajotas",
+      "B": "24 lajotas",
+      "C": "36 lajotas",
+      "D": "48 lajotas",
+      "E": "60 lajotas"
+    },
+    "respostaCorreta": "D",
+    "materia": "Matemática",
+    "explicacao": "A área da cozinha é de 4m * 3m = 12 metros quadrados. A área de cada lajota quadrada é 0,5m * 0,5m = 0,25 metros quadrados. O número de lajotas necessárias é: 12 / 0,25 = 48 lajotas."
+  }
+]`,
+
+  prova2026S2: `[
+  {
+    "numero": 1,
+    "enunciado": "(Vestibulinho ETEC - 2026/2) Em um ecossistema equilibrado, a introdução de uma espécie exótica sem predadores naturais costuma desencadear graves desequilíbrios. Qual das situações abaixo representa o impacto ecológico mais provável?",
+    "alternativas": {
+      "A": "Aumento exponencial imediato da diversidade genética nativa por cruzamento interespecífico.",
+      "B": "Crescimento descontrolado da população exótica, competindo por nichos ecológicos com as espécies locais e gerando risco de extinção.",
+      "C": "Regressão automática de plantas pioneiras e cessação da incidência solar.",
+      "D": "Estabilidade metabólica e incremento hídrico no lençol freático devido ao sombreamento.",
+      "E": "Aniquilação mútua dos decompositores por inibição enzimática natural."
+    },
+    "respostaCorreta": "B",
+    "materia": "Ciências da Natureza",
+    "explicacao": "A ausência de predadores naturais permite que as espécies exóticas invasoras se multipliquem de forma descontrolada. Elas passam a competir intensamente por comida, espaço e refúgio com as espécies nativas, frequentemente levando espécies locais ao declínio ou à extinção."
+  },
+  {
+    "numero": 2,
+    "enunciado": "(Vestibulinho ETEC - 2026/2) No início do século XX, o Brasil passou pela chamada 'Revolta da Vacina' no Rio de Janeiro. Esse levante popular esteve inserido em um contexto de reformas urbanas sob o governo presidencial de Rodrigues Alves e lideradas pelo prefeito Pereira Passos. O principal fator sanitário desencadeador da revolta urbana popular foi:",
+    "alternativas": {
+      "A": "A proibição de importação de medicamentos homeopáticos europeus.",
+      "B": "A obrigatoriedade da vacinação contra a varíola, imposta de forma autoritária por Oswaldo Cruz.",
+      "C": "O envenenamento acidental das fontes públicas com cloro ativo de saneamento.",
+      "D": "A recusa estatal em prestar socorro médico gratuito aos imigrantes na capital.",
+      "E": "A exigência de carteira de imunidade química para a compra de pão de trigo."
+    },
+    "respostaCorreta": "B",
+    "materia": "História",
+    "explicacao": "O principal detonador foi a instituição da Lei da Vacina Obrigatória de 1904 contra a varíola. A aplicação violenta e sem esclarecimento da campanha de saúde, liderada pelo sanitarista Oswaldo Cruz, gerou pânico e revolta na população da cidade do Rio de Janeiro."
+  }
+]`,
+
+  prova2024S1: `[
+  {
+    "numero": 1,
+    "enunciado": "(Vestibulinho ETEC - 2024/1) As primeiras civilizações agrícolas desenvolveram-se nas proximidades de grandes vales fluviais, favorecidas pelas cheias periódicas que fertilizavam o solo adjacente. Esse sistema hídrico e agrícola caracterizou as chamadas 'Sociedades do Regadio' ou 'Impérios Teocráticos de Regadio'. A qual bacia fluvial esteve intimamente associada a evolução do Antigo Egito?",
+    "alternativas": {
+      "A": "Bacia Fluvial do Rio Tigre",
+      "B": "Bacia Fluvial do Rio Eufrates",
+      "C": "Bacia Fluvial do Rio Nilo",
+      "D": "Bacia Fluvial do Rio Amarelo (Huang He)",
+      "E": "Bacia Fluvial do Rio Indo"
+    },
+    "respostaCorreta": "C",
+    "materia": "História",
+    "explicacao": "Como historicamente ressaltado por Heródoto na máxima 'O Egito é uma dádiva do Nilo', a civilização egípcia floresceu inteiramente às margens do Rio Nilo, dependendo das cheias sazonais para irrigar e cobrir de húmus as terras áridas do deserto."
+  },
+  {
+    "numero": 2,
+    "enunciado": "(Vestibulinho ETEC - 2024/1) Em uma feira livre de produtos orgânicos em São Paulo, o preço de 1 kg de tomates vermelhos selecionados equivale a duas vezes o preço de 1 kg de batatas inglesas. Se um assistente comprar 3 kg de tomates e 4 kg de batatas, o valor total da compra será de R$ 50,00. Qual é o preço unitário do quilo de tomate?",
+    "alternativas": {
+      "A": "R$ 5,00",
+      "B": "R$ 6,00",
+      "C": "R$ 8,00",
+      "D": "R$ 10,00",
+      "E": "R$ 12,00"
+    },
+    "respostaCorreta": "D",
+    "materia": "Matemática",
+    "explicacao": "Seja B o preço de 1 kg de batatas e T o de tomates. Temos T = 2B. A equação da compra é: 3T + 4B = 50. Substituindo T: 3(2B) + 4B = 50 => 6B + 4B = 50 => 10B = 50 => B = 5. Como o quilo do tomate é duas vezes o da batata, T = 2 * 5 = R$ 10,00."
+  }
 ]`
 };
