@@ -1,0 +1,6 @@
+{
+  "name": "Simulado ETEC",
+  "description": "Plataforma de estudos e simulado para o vestibulinho ETEC com avaliação instantânea e suporte a novos cadernos de questões.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
