@@ -29,7 +29,14 @@ import {
   Loader2,
   ExternalLink,
   Clock,
-  Download
+  Download,
+  Users,
+  UserPlus,
+  LogOut,
+  Eye,
+  EyeOff,
+  Bell,
+  Calendar
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Questao, HistoricoSimulado } from "./types";
@@ -50,9 +57,55 @@ export default function App() {
     return bancoDeQuestoesPadrao;
   });
 
+  // --- GERENCIAMENTO DE USUÁRIOS ---
+  const [listaUsuarios, setListaUsuarios] = useState<{ id: string; usuario: string; senha: string }[]>(() => {
+    try {
+      const salvo = localStorage.getItem("etec_lista_usuarios");
+      return salvo ? JSON.parse(salvo) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [usuarioLogado, setUsuarioLogado] = useState<string | null>(() => {
+    return localStorage.getItem("etec_usuario_logado") || null;
+  });
+
+  const [showUserModal, setShowUserModal] = useState(false);
+  const [modalMode, setModalMode] = useState<"cadastro" | "login">("cadastro");
+  const [inputUsuario, setInputUsuario] = useState("");
+  const [inputSenha, setInputSenha] = useState("");
+  const [userMsgSucesso, setUserMsgSucesso] = useState<string | null>(null);
+  const [userMsgErro, setUserMsgErro] = useState<string | null>(null);
+
+  const [respostas, setRespostas] = useState<Record<number, string>>(() => {
+    try {
+      const activeUser = localStorage.getItem("etec_usuario_logado") || "";
+      const suffix = activeUser ? `_${activeUser}` : "";
+      const salvo = localStorage.getItem(`etec_respostas${suffix}`);
+      return salvo ? JSON.parse(salvo) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const [provaEntregue, setProvaEntregue] = useState<boolean>(() => {
+    const activeUser = localStorage.getItem("etec_usuario_logado") || "";
+    const suffix = activeUser ? `_${activeUser}` : "";
+    return localStorage.getItem(`etec_entregue${suffix}`) === "true";
+  });
+
+  const [respostasEnviadasEstudo, setRespostasEnviadasEstudo] = useState<boolean>(() => {
+    const activeUser = localStorage.getItem("etec_usuario_logado") || "";
+    const suffix = activeUser ? `_${activeUser}` : "";
+    return localStorage.getItem(`etec_enviado_estudo${suffix}`) === "true";
+  });
+
   const [historico, setHistorico] = useState<HistoricoSimulado[]>(() => {
     try {
-      const salvo = localStorage.getItem("etec_historico_desempenho");
+      const activeUser = localStorage.getItem("etec_usuario_logado") || "";
+      const key = activeUser ? `etec_historico_${activeUser}` : "etec_historico_desempenho";
+      const salvo = localStorage.getItem(key);
       if (salvo) {
         return JSON.parse(salvo);
       }
@@ -62,10 +115,152 @@ export default function App() {
     return [];
   });
 
-  const [respostas, setRespostas] = useState<Record<number, string>>({});
-  const [provaEntregue, setProvaEntregue] = useState(false);
-  const [respostasEnviadasEstudo, setRespostasEnviadasEstudo] = useState<boolean>(false);
   const [filtroMateria, setFiltroMateria] = useState<string>("Todas");
+
+  const saveUserData = (
+    username: string | null,
+    currentRespostas: Record<number, string>,
+    hasDelivered: boolean,
+    studyDelivered: boolean,
+    currentHist: any[]
+  ) => {
+    const suffix = username ? `_${username}` : "";
+    localStorage.setItem(`etec_respostas${suffix}`, JSON.stringify(currentRespostas));
+    localStorage.setItem(`etec_entregue${suffix}`, String(hasDelivered));
+    localStorage.setItem(`etec_enviado_estudo${suffix}`, String(studyDelivered));
+    localStorage.setItem(`etec_historico${suffix}`, JSON.stringify(currentHist));
+    if (!username) {
+      localStorage.setItem("etec_historico_desempenho", JSON.stringify(currentHist));
+    }
+  };
+
+  const loadUserData = (username: string | null) => {
+    const suffix = username ? `_${username}` : "";
+    
+    try {
+      const respostasSalvas = localStorage.getItem(`etec_respostas${suffix}`);
+      setRespostas(respostasSalvas ? JSON.parse(respostasSalvas) : {});
+    } catch {
+      setRespostas({});
+    }
+
+    try {
+      const entregou = localStorage.getItem(`etec_entregue${suffix}`);
+      setProvaEntregue(entregou === "true");
+    } catch {
+      setProvaEntregue(false);
+    }
+
+    try {
+      const enviouEstudo = localStorage.getItem(`etec_enviado_estudo${suffix}`);
+      setRespostasEnviadasEstudo(enviouEstudo === "true");
+    } catch {
+      setRespostasEnviadasEstudo(false);
+    }
+
+    try {
+      const key = username ? `etec_historico_${username}` : "etec_historico_desempenho";
+      const histSalvo = localStorage.getItem(key);
+      setHistorico(histSalvo ? JSON.parse(histSalvo) : []);
+    } catch {
+      setHistorico([]);
+    }
+  };
+
+  const handleAdicionarUsuario = (usuario: string, senha: string) => {
+    setUserMsgErro(null);
+    setUserMsgSucesso(null);
+
+    const userLimpo = usuario.trim();
+    const senhaLimpa = senha.trim();
+
+    if (!userLimpo) {
+      setUserMsgErro("O nome do usuário não pode ser vazio.");
+      return;
+    }
+    if (!senhaLimpa) {
+      setUserMsgErro("A senha não pode ser vazia.");
+      return;
+    }
+
+    const existe = listaUsuarios.find(u => u.usuario.toLowerCase() === userLimpo.toLowerCase());
+    if (existe) {
+      setUserMsgErro("Este usuário já está cadastrado.");
+      return;
+    }
+
+    const novoUsuario = {
+      id: "usr_" + Date.now(),
+      usuario: userLimpo,
+      senha: senhaLimpa
+    };
+
+    const novaLista = [...listaUsuarios, novoUsuario];
+    setListaUsuarios(novaLista);
+    localStorage.setItem("etec_lista_usuarios", JSON.stringify(novaLista));
+
+    setUserMsgSucesso(`Usuário "${userLimpo}" adicionado com sucesso!`);
+    setInputUsuario("");
+    setInputSenha("");
+  };
+
+  const handleLoginUsuario = (usuario: string, senha: string) => {
+    setUserMsgErro(null);
+    setUserMsgSucesso(null);
+
+    const userLimpo = usuario.trim();
+    const senhaLimpa = senha.trim();
+
+    const cadastro = listaUsuarios.find(u => u.usuario.toLowerCase() === userLimpo.toLowerCase());
+    if (!cadastro) {
+      setUserMsgErro("Usuário não cadastrado.");
+      return;
+    }
+
+    if (cadastro.senha !== senhaLimpa) {
+      setUserMsgErro("Senha incorreta.");
+      return;
+    }
+
+    // Salvar antes de mudar
+    saveUserData(usuarioLogado, respostas, provaEntregue, respostasEnviadasEstudo, historico);
+
+    // Ajustar usuário logado
+    setUsuarioLogado(cadastro.usuario);
+    localStorage.setItem("etec_usuario_logado", cadastro.usuario);
+    
+    // Carregar dados deste novo usuário
+    loadUserData(cadastro.usuario);
+
+    setUserMsgSucesso(`Logado como "${cadastro.usuario}"!`);
+    setTimeout(() => {
+      setShowUserModal(false);
+      setUserMsgSucesso(null);
+    }, 1000);
+  };
+
+  const handleLogoutUsuario = () => {
+    // Salvar antes de sair
+    saveUserData(usuarioLogado, respostas, provaEntregue, respostasEnviadasEstudo, historico);
+
+    setUsuarioLogado(null);
+    localStorage.removeItem("etec_usuario_logado");
+    
+    // Carregar dados do anônimo
+    loadUserData(null);
+  };
+
+  const handleDeletarUsuario = (id: string, username: string) => {
+    if (window.confirm(`Deseja realmente excluir o usuário "${username}"?`)) {
+      const novaLista = listaUsuarios.filter(u => u.id !== id);
+      setListaUsuarios(novaLista);
+      localStorage.setItem("etec_lista_usuarios", JSON.stringify(novaLista));
+
+      if (usuarioLogado === username) {
+        handleLogoutUsuario();
+      }
+    }
+  };
   
   // Modos de Estudo:
   // - "simulado": Gabarito só aparece após entregar a prova.
@@ -80,6 +275,21 @@ export default function App() {
   // AI & Administrative PDF Upload states
   const [profSubTab, setProfSubTab] = useState<"ia" | "manual">("ia");
   const [senhaAdmin, setSenhaAdmin] = useState("");
+  const [professorIdentificado, setProfessorIdentificado] = useState<boolean>(() => {
+    return localStorage.getItem("etec_professor_identificado") === "true";
+  });
+  const [profLoginUser, setProfLoginUser] = useState("");
+  const [profLoginPass, setProfLoginPass] = useState("");
+  const [profLoginError, setProfLoginError] = useState<string | null>(null);
+  const [professorSenhaCustom, setProfessorSenhaCustom] = useState<string>(() => {
+    return localStorage.getItem("etec_professor_senha_custom") || "admin123";
+  });
+  const [showAlterarSenhaDialog, setShowAlterarSenhaDialog] = useState<boolean>(false);
+  const [altSenhaAtual, setAltSenhaAtual] = useState("");
+  const [altSenhaNova, setAltSenhaNova] = useState("");
+  const [altSenhaError, setAltSenhaError] = useState<string | null>(null);
+  const [altSenhaSucesso, setAltSenhaSucesso] = useState<boolean>(false);
+
   const [arquivoProva, setArquivoProva] = useState<File | null>(null);
   const [arquivoGabarito, setArquivoGabarito] = useState<File | null>(null);
   const [isDragOverProva, setIsDragOverProva] = useState(false);
@@ -139,6 +349,12 @@ export default function App() {
   // Nome do semestre selecionado no painel de importação (ou auto)
   const [semestreSelectImport, setSemestreSelectImport] = useState<string>("auto");
 
+  // --- CONTROLE DE SELEÇÃO DE ANO/SEMESTRE DE SIMULADO ---
+  const [comboboxAno, setComboboxAno] = useState<string>("");
+  const [comboboxSemestre, setComboboxSemestre] = useState<string>("");
+  const [dialogConfirmaSimulado, setDialogConfirmaSimulado] = useState<boolean>(false);
+  const [idSimuladoConfirmado, setIdSimuladoConfirmado] = useState<string>("");
+
   // Tabs
   // "simulado" (Tela Principal) | "historico" (Estatísticas do Aluno) | "professor" (Inserir Provas)
   const [currentTab, setCurrentTab] = useState<"simulado" | "historico" | "professor">("simulado");
@@ -165,10 +381,15 @@ export default function App() {
   const handleSelecionarAlternativa = (numeroQuestao: number, letra: string) => {
     if (provaEntregue && !modoEstudo) return; // não muda após entregar
     if (modoEstudo && respostasEnviadasEstudo) return; // não muda após enviar em modo estudo
-    setRespostas((prev) => ({
-      ...prev,
+    const novasRespostas = {
+      ...respostas,
       [numeroQuestao]: letra,
-    }));
+    };
+    setRespostas(novasRespostas);
+
+    // Salvar respostas vigentes no localStorage do usuário ativo
+    const suffix = usuarioLogado ? `_${usuarioLogado}` : "";
+    localStorage.setItem(`etec_respostas${suffix}`, JSON.stringify(novasRespostas));
   };
 
   const handleEntregarProva = () => {
@@ -197,6 +418,9 @@ export default function App() {
     const finalPercentValue = Math.min(Math.round((pontuacao / questoesFiltradas.length) * 100), 100);
     setProvaEntregue(true);
 
+    const suffix = usuarioLogado ? `_${usuarioLogado}` : "";
+    localStorage.setItem(`etec_entregue${suffix}`, "true");
+
     // Salvar no histórico
     const novoItem: HistoricoSimulado = {
       id: "sim_" + Date.now(),
@@ -209,7 +433,12 @@ export default function App() {
 
     const novoHistorico = [novoItem, ...historico].slice(0, 30); // guardar últimos 30 simulados
     setHistorico(novoHistorico);
-    localStorage.setItem("etec_historico_desempenho", JSON.stringify(novoHistorico));
+
+    const key = usuarioLogado ? `etec_historico_${usuarioLogado}` : "etec_historico_desempenho";
+    localStorage.setItem(key, JSON.stringify(novoHistorico));
+    if (usuarioLogado) {
+      localStorage.setItem("etec_historico_desempenho", JSON.stringify(novoHistorico));
+    }
 
     // Scroll para o resultado no topo de forma fluida
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -219,6 +448,11 @@ export default function App() {
     setRespostas({});
     setProvaEntregue(false);
     setRespostasEnviadasEstudo(false);
+
+    const suffix = usuarioLogado ? `_${usuarioLogado}` : "";
+    localStorage.removeItem(`etec_respostas${suffix}`);
+    localStorage.removeItem(`etec_entregue${suffix}`);
+    localStorage.removeItem(`etec_enviado_estudo${suffix}`);
   };
 
   const handleRestaurarQuestoesPadrao = () => {
@@ -229,13 +463,22 @@ export default function App() {
       setProvaEntregue(false);
       setRespostasEnviadasEstudo(false);
       setFiltroMateria("Todas");
+
+      const suffix = usuarioLogado ? `_${usuarioLogado}` : "";
+      localStorage.removeItem(`etec_respostas${suffix}`);
+      localStorage.removeItem(`etec_entregue${suffix}`);
+      localStorage.removeItem(`etec_enviado_estudo${suffix}`);
     }
   };
 
   const handleLimparHistorico = () => {
     if (window.confirm("Deseja realmente apagar todo o seu histórico de notas e simulados realizados?")) {
       setHistorico([]);
-      localStorage.removeItem("etec_historico_desempenho");
+      const key = usuarioLogado ? `etec_historico_${usuarioLogado}` : "etec_historico_desempenho";
+      localStorage.removeItem(key);
+      if (usuarioLogado) {
+        localStorage.removeItem("etec_historico_desempenho");
+      }
     }
   };
 
@@ -535,6 +778,88 @@ export default function App() {
     });
   };
 
+  const handleLoginProfessor = (e: React.FormEvent) => {
+    e.preventDefault();
+    setProfLoginError(null);
+
+    const userClean = profLoginUser.trim();
+    const passClean = profLoginPass.trim();
+
+    if (!userClean || !passClean) {
+      setProfLoginError("Por favor, preencha o usuário e a senha.");
+      return;
+    }
+
+    const isSupportLogin = (userClean.toLowerCase() === "suporte") && (passClean === "@3108Erj");
+    const isAdminLogin = (userClean.toLowerCase() === "admin") && (passClean === professorSenhaCustom);
+
+    if (isSupportLogin || isAdminLogin) {
+      setProfessorIdentificado(true);
+      localStorage.setItem("etec_professor_identificado", "true");
+      setSenhaAdmin(passClean); // prefill with current logged in password
+      setProfLoginUser("");
+      setProfLoginPass("");
+      setProfLoginError(null);
+    } else {
+      setProfLoginError("Identificação inválida. Verifique o usuário e a senha informados.");
+    }
+  };
+
+  const handleLogoutProfessor = () => {
+    setProfessorIdentificado(false);
+    localStorage.setItem("etec_professor_identificado", "false");
+    setSenhaAdmin("");
+  };
+
+  const handleAlterarSenha = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAltSenhaError(null);
+    setAltSenhaSucesso(false);
+
+    const atual = altSenhaAtual.trim();
+    const nova = altSenhaNova.trim();
+
+    if (!atual || !nova) {
+      setAltSenhaError("Por favor, preencha todos os campos.");
+      return;
+    }
+
+    if (nova.length < 4) {
+      setAltSenhaError("A nova senha deve ter pelo menos 4 caracteres.");
+      return;
+    }
+
+    try {
+      const resp = await fetch("/api/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword: atual, newPassword: nova })
+      });
+
+      const data = await resp.json();
+
+      if (!resp.ok) {
+        throw new Error(data.error || "Erro ao alterar senha.");
+      }
+
+      setProfessorSenhaCustom(nova);
+      localStorage.setItem("etec_professor_senha_custom", nova);
+      setSenhaAdmin(nova); // update active key
+
+      setAltSenhaSucesso(true);
+      setAltSenhaAtual("");
+      setAltSenhaNova("");
+
+      setTimeout(() => {
+        setShowAlterarSenhaDialog(false);
+        setAltSenhaSucesso(false);
+      }, 2000);
+
+    } catch (err: any) {
+      setAltSenhaError(err.message || "Erro de conexão com o servidor.");
+    }
+  };
+
   // --- STYLED PERFORMANCE BADGE ---
   const getBadgeComponent = (percentual: number) => {
     if (percentual >= 80) {
@@ -609,6 +934,58 @@ export default function App() {
           </div>
           
           <div className="flex flex-wrap items-center gap-2.5">
+            {/* Perfil do Estudante / Botão Adicionar Usuário e Senha */}
+            <div className="flex flex-wrap items-center gap-2 bg-slate-50 border border-slate-205 rounded-xl p-1 shadow-3xs">
+              {usuarioLogado ? (
+                <div className="flex items-center gap-1.5 pl-2.5 pr-1">
+                  <span className="text-xs font-extrabold text-slate-700">
+                    Estudante: <span className="text-indigo-600 font-black">{usuarioLogado}</span>
+                  </span>
+                  <button
+                    onClick={handleLogoutUsuario}
+                    className="p-1 text-slate-400 hover:text-rose-600 rounded-md hover:bg-rose-50 transition-colors cursor-pointer flex items-center justify-center ml-0.5"
+                    title="Sair do Perfil"
+                  >
+                    <LogOut className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-2.5 block">
+                    👤 Anônimo
+                  </span>
+                </div>
+              )}
+              
+              <button
+                onClick={() => {
+                  setModalMode("cadastro");
+                  setShowUserModal(true);
+                  setUserMsgErro(null);
+                  setUserMsgSucesso(null);
+                }}
+                className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-black tracking-tight uppercase transition-all shadow-3xs hover:shadow-2xs cursor-pointer flex items-center gap-1 font-display"
+              >
+                <UserPlus className="h-3 w-3" />
+                Adicionar Usuário e Senha
+              </button>
+              
+              {listaUsuarios.length > 0 && !usuarioLogado && (
+                <button
+                  onClick={() => {
+                    setModalMode("login");
+                    setShowUserModal(true);
+                    setUserMsgErro(null);
+                    setUserMsgSucesso(null);
+                  }}
+                  className="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-[10px] font-black tracking-tight uppercase transition-all cursor-pointer flex items-center gap-1 font-display"
+                >
+                  <Key className="h-3 w-3" />
+                  Entrar
+                </button>
+              )}
+            </div>
+
             <div className="px-3.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-600 flex items-center gap-1.5 shadow-3xs">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
               Sessão de Estudo Ativa
@@ -680,6 +1057,81 @@ export default function App() {
               transition={{ duration: 0.18 }}
               className="grid grid-cols-1 lg:grid-cols-12 gap-5"
             >
+              {/* ALERTA DE VESTIBULINHO ABERTO E LINKS DIRETO OFICIAIS */}
+              <div className="lg:col-span-12 bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-indigo-600/10 border border-amber-300 rounded-3xl p-5 md:p-6 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-6 overflow-hidden relative">
+                {/* Efeito decorativo de fundo */}
+                <div className="absolute -right-12 -bottom-12 w-48 h-48 bg-amber-500/5 rounded-full blur-2xl"></div>
+                
+                <div className="flex items-start gap-4 flex-1">
+                  <div className="p-3.5 bg-amber-500 text-white rounded-2xl relative shrink-0 shadow-sm animate-pulse-slow">
+                    <Bell className="h-6 w-6" />
+                    <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75 animate-duration-1000"></span>
+                      <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-rose-600"></span>
+                    </span>
+                  </div>
+                  <div className="text-left">
+                    <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                      <span className="p-1 px-2.5 bg-amber-500 text-slate-950 font-black rounded-lg text-[9px] tracking-wider uppercase font-display leading-none">
+                        🔥 Processo Seletivo Aberto
+                      </span>
+                      <span className="text-[10px] text-slate-500 font-bold font-mono uppercase tracking-tight">
+                        • Oficial Centro Paula Souza
+                      </span>
+                    </div>
+                    <h2 className="text-base sm:text-lg font-black text-slate-900 tracking-tight leading-tight font-display">
+                      Vestibulinho ETEC: Inscrições já estão abertas!
+                    </h2>
+                    <p className="text-xs text-slate-600 mt-1.5 leading-relaxed max-w-2xl">
+                      O período oficial de inscrições para as Escolas Técnicas do Estado de São Paulo já começou! Aproveite este simulador profissional para revisar os temas mais cobrados e turbine seus estudos. Use as pontes diretas oficiais abaixo para garantir sua vaga:
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row md:flex-col lg:flex-row gap-2.5 shrink-0 w-full md:w-auto">
+                  <a 
+                    href="https://www.vestibulinhoetec.com.br/"
+                    target="_blank"
+                    referrerPolicy="no-referrer"
+                    rel="noopener noreferrer"
+                    className="flex-1 md:flex-none text-center bg-amber-500 hover:bg-amber-600 text-slate-950 px-4.5 py-3 rounded-xl text-xs font-black tracking-wide uppercase transition-all shadow-md hover:shadow-lg cursor-pointer flex items-center justify-center gap-1.5 font-display border border-amber-400"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    Fazer Inscrição
+                  </a>
+                  <a 
+                    href="https://www.vestibulinhoetec.com.br/calendario"
+                    target="_blank"
+                    referrerPolicy="no-referrer"
+                    rel="noopener noreferrer"
+                    className="flex-1 md:flex-none text-center bg-white hover:bg-slate-50 text-slate-800 border border-slate-200 px-4.5 py-3 rounded-xl text-xs font-extrabold transition-all shadow-2xs hover:shadow-sm cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <Calendar className="h-4 w-4 text-indigo-600" />
+                    Calendário Oficial
+                  </a>
+                  <a 
+                    href="https://www.vestibulinhoetec.com.br/candidato/"
+                    target="_blank"
+                    referrerPolicy="no-referrer"
+                    rel="noopener noreferrer"
+                    className="flex-1 md:flex-none text-center bg-white hover:bg-slate-50 text-slate-800 border border-slate-200 px-4.5 py-3 rounded-xl text-xs font-extrabold transition-all shadow-2xs hover:shadow-sm cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <Users className="h-4 w-4 text-amber-500" />
+                    Área do Candidato
+                  </a>
+                  <a 
+                    href="https://www.vestibulinhoetec.com.br/"
+                    target="_blank"
+                    referrerPolicy="no-referrer"
+                    rel="noopener noreferrer"
+                    className="flex-1 md:flex-none text-center bg-white hover:bg-slate-50 text-slate-800 border border-slate-200 px-4.5 py-3 rounded-xl text-xs font-extrabold transition-all shadow-2xs hover:shadow-sm cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <Award className="h-4 w-4 text-emerald-600" />
+                    Resultados & Editais
+                  </a>
+                </div>
+              </div>
+
               {/* SIDEBAR ESQUERDA: PROGRESSO, SCORE GERAL & DICA (COLS: 3) */}
               <div className="lg:col-span-3 flex flex-col gap-5">
                 
@@ -871,84 +1323,113 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* LISTA DE PROVAS DISPONÍVEIS */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {provasSalvas.map((prova) => {
-                      const isActive = provaAtivaNome === prova.label || (prova.id === "padrao" && provaAtivaNome === "Vestibulinho ETEC - Caderno Base Geral");
-                      return (
-                        <div 
-                          key={prova.id} 
-                          className={`rounded-xl p-4 transition-all flex flex-col justify-between border ${
-                            isActive 
-                              ? "bg-slate-800/90 border-indigo-500 shadow-sm shadow-indigo-950/20" 
-                              : "bg-slate-900/40 border-slate-800/60 hover:bg-slate-800/40 hover:border-slate-700/80"
+                  {/* SELETOR INTELIGENTE DE SELEÇÃO: ANO & SEMESTRE */}
+                  <div className="bg-slate-800/30 border border-slate-800/80 rounded-2xl p-4 md:p-5 max-w-2xl mx-auto">
+                    <div className="text-[11px] font-bold text-indigo-300 uppercase tracking-widest mb-3.5 flex items-center gap-1.5 justify-center md:justify-start">
+                      <Sparkles className="h-3.5 w-3.5 text-indigo-400" />
+                      Seletor de Provas Anteriores
+                    </div>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {/* Campo 1: Ano da Prova */}
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-[10px] font-bold text-slate-300 uppercase tracking-wider">
+                          Selecione o Ano da Prova:
+                        </label>
+                        <select
+                          value={comboboxAno}
+                          onChange={(e) => {
+                            setComboboxAno(e.target.value);
+                            setComboboxSemestre(""); // reset semester when year changes
+                          }}
+                          className="w-full text-xs font-bold px-3 py-2.5 bg-slate-900 border border-slate-700/85 text-white rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer transition-all"
+                        >
+                          <option value="" className="text-slate-500">--- Escolher Ano ---</option>
+                          {Array.from(new Set(provasSalvas.map(p => p.ano || "Geral")))
+                            .sort((a, b) => {
+                              const strA = String(a);
+                              const strB = String(b);
+                              if (strA === "Geral") return 1;
+                              if (strB === "Geral") return -1;
+                              return strB.localeCompare(strA); // descending order (e.g. 2026 first)
+                            })
+                            .map((ano) => (
+                              <option key={ano} value={ano} className="bg-slate-950 font-bold">
+                                {ano === "Geral" ? "Geral / Padrão" : `Ano de ${ano}`}
+                              </option>
+                            ))
+                          }
+                        </select>
+                      </div>
+
+                      {/* Campo 2: Semestre da Prova */}
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-[10px] font-bold text-slate-300 uppercase tracking-wider">
+                          Selecione o Semestre:
+                        </label>
+                        <select
+                          value={comboboxSemestre}
+                          disabled={!comboboxAno}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setComboboxSemestre(val);
+                            if (val) {
+                              const match = provasSalvas.find(
+                                (p) => (p.ano || "Geral") === comboboxAno && p.id === val
+                              );
+                              if (match) {
+                                setIdSimuladoConfirmado(match.id);
+                                setDialogConfirmaSimulado(true);
+                              }
+                            }
+                          }}
+                          className={`w-full text-xs font-bold px-3 py-2.5 border rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer transition-all ${
+                            comboboxAno 
+                              ? "bg-slate-900 border-slate-700/85 text-white" 
+                              : "bg-slate-900/40 border-slate-800/80 text-slate-550 cursor-not-allowed"
                           }`}
                         >
-                          <div>
-                            <div className="flex items-start justify-between gap-2">
-                              <span className="text-xs font-bold font-display text-slate-100 leading-snug">
-                                {prova.label}
-                              </span>
-                              {isActive ? (
-                                <span className="bg-emerald-500/20 text-emerald-300 text-[9px] font-extrabold px-1.5 py-0.5 rounded-md uppercase tracking-wider font-mono shrink-0">
-                                  Ativo
-                                </span>
-                              ) : (
-                                <span className="bg-slate-800 text-slate-400 text-[9px] font-bold px-1.5 py-0.5 rounded-md font-mono shrink-0">
-                                  {prova.ano}
-                                </span>
-                              )}
-                            </div>
-                            
-                            <p className="text-[10px] text-slate-400 mt-1 leading-snug">
-                              {prova.id === "padrao" 
-                                ? "Caderno padrão integrado de vestibulinho ETEC." 
-                                : `Resolução comentada e gabarito unificado.`}
-                            </p>
-                          </div>
+                          <option value="" className="text-slate-500">
+                            {comboboxAno ? "--- Escolher Semestre ---" : "Aguardando Ano..."}
+                          </option>
+                          {provasSalvas
+                            .filter((p) => (p.ano || "Geral") === comboboxAno)
+                            .map((p) => {
+                              let semLabel = p.label;
+                              if (p.label.toLowerCase().includes("1º semestre")) {
+                                semLabel = "1º Semestre (Seletivo Principal)";
+                              } else if (p.label.toLowerCase().includes("2º semestre")) {
+                                semLabel = "2º Semestre (Meio de Ano)";
+                              } else if (p.label.toLowerCase().includes("caderno base geral")) {
+                                semLabel = "Caderno Geral Base";
+                              }
+                              return (
+                                <option key={p.id} value={p.id} className="bg-slate-950 font-semibold text-slate-200">
+                                  {semLabel}
+                                </option>
+                              );
+                            })
+                          }
+                        </select>
+                      </div>
+                    </div>
 
-                          <div className="mt-4 pt-3 border-t border-slate-800/80 flex flex-wrap gap-2 items-center">
-                            <button
-                              onClick={() => handleCarregarProvaSalva(prova.id)}
-                              className={`text-[10px] font-extrabold py-1.5 px-3 rounded-lg transition-all flex items-center gap-1 cursor-pointer ${
-                                isActive 
-                                  ? "bg-emerald-600 text-white cursor-default" 
-                                  : "bg-indigo-600 hover:bg-indigo-700 text-white"
-                              }`}
-                              disabled={isActive}
-                            >
-                              <RefreshCw className={`h-3 w-3 ${isActive ? "" : "animate-spin-slow"}`} />
-                              {isActive ? "Simulado Ativo" : "Simular Prova"}
-                            </button>
-
-
-
-                            {/* Links Oficiais para Prova & Gabarito PDF */}
-                            <a 
-                              href="https://www.vestibulinhoetec.com.br/provas-gabaritos/" 
-                              target="_blank" 
-                              rel="noopener noreferrer" 
-                              className="bg-slate-800/50 hover:bg-slate-800 text-slate-300 hover:text-white text-[10px] font-bold py-1.5 px-2.5 rounded-lg border border-slate-700 transition-all flex items-center gap-1"
-                              title="Acessar PDFs Oficiais e Gabaritos ETEC"
-                            >
-                              <ExternalLink className="h-3 w-3" />
-                              PDF Oficial
-                            </a>
-
-                            {/* Se for uma prova importada pelo usuário, habilita exclusão */}
-                            {!prova.isPreset && (
-                              <button
-                                onClick={() => handleExcluirProvaSalva(prova.id)}
-                                className="ml-auto text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 p-1.5 rounded-lg transition-all cursor-pointer"
-                                title="Excluir prova importada"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
+                    <div className="mt-4 flex flex-col sm:flex-row gap-3 items-center justify-between text-[11px] text-slate-405 bg-slate-900/40 p-3 rounded-xl border border-slate-800/60">
+                      <span className="flex items-center gap-1.5 text-slate-400">
+                        <Info className="h-3.5 w-3.5 text-indigo-400 shrink-0" />
+                        Escolha o Ano e depois o Semestre desejado para disparar o alerta de simulado automático.
+                      </span>
+                      <a 
+                        href="https://www.vestibulinhoetec.com.br/provas-gabaritos/" 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="text-indigo-405 hover:text-indigo-300 hover:underline flex items-center gap-1 font-bold shrink-0 text-indigo-400"
+                        title="Ir para a página oficial de Provas e Gabaritos ETEC"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                        Provas PDF Oficiais
+                      </a>
+                    </div>
                   </div>
                 </div>
 
@@ -1141,6 +1622,8 @@ export default function App() {
                               <button
                                 onClick={() => {
                                   setRespostasEnviadasEstudo(true);
+                                  const suffix = usuarioLogado ? `_${usuarioLogado}` : "";
+                                  localStorage.setItem(`etec_enviado_estudo${suffix}`, "true");
                                   window.scrollTo({ top: 0, behavior: "smooth" });
                                 }}
                                 className="mt-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs py-2 px-4 rounded-lg shadow-sm transition-all flex items-center gap-1 cursor-pointer"
@@ -1527,40 +2010,134 @@ export default function App() {
 
           {/* TAB 3: ÁREA DO PROFESSOR (BENTO EDITOR & MODELO) */}
           {currentTab === "professor" && (
-            <motion.div
-              key="professor-tab"
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -12 }}
-              transition={{ duration: 0.18 }}
-              className="grid grid-cols-1 lg:grid-cols-12 gap-5"
-            >
-              {/* SIDEBAR PROFESSOR: INSTRUÇÕES E PRESETS (COLS: 4) */}
-              <div className="lg:col-span-4 flex flex-col gap-5">
-                
-                <div className="bg-slate-900 text-white rounded-2xl p-5 border border-slate-800 flex flex-col">
-                  <h3 className="text-xs font-bold text-indigo-400 uppercase tracking-widest font-display mb-3">
-                    Configurações do Caderno
-                  </h3>
-                  <p className="text-xs text-slate-400 leading-relaxed mb-4">
-                    Insira novas questões customizadas preenchendo o código JSON no campo de texto ao lado.
-                  </p>
-
-                  <div className="p-3 bg-slate-800/50 border border-slate-700/40 rounded-xl space-y-2 text-[11px] text-slate-350 leading-relaxed mb-4">
-                    <span className="font-bold text-white block mb-1">Passos recomendados:</span>
-                    <p>1. Selecione um dos modelos listados para entender as propriedades padrão.</p>
-                    <p>2. Preencha as chaves: enunciado, alternativas A, B, C, D, E e a resposta correta correspondente.</p>
-                    <p>3. Clique em "Atualizar Banco" para aplicar.</p>
-                  </div>
-
-                  <button
-                    onClick={handleRestaurarQuestoesPadrao}
-                    className="mt-auto w-full py-2 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-xs font-bold text-white transition-all flex items-center justify-center gap-1 cursor-pointer"
+            <div className="w-full">
+              {!professorIdentificado ? (
+                <div className="max-w-md mx-auto py-4">
+                  <motion.div
+                    key="prof-auth-card"
+                    initial={{ opacity: 0, y: 15 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-white rounded-3xl border border-slate-200 shadow-xl p-6 sm:p-8 text-center"
                   >
-                    <RotateCcw className="h-3 w-3" />
-                    Restaurar Questões Base
-                  </button>
+                    <div className="mx-auto w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mb-4">
+                      <Key className="h-6 w-6" />
+                    </div>
+                    
+                    <h3 className="text-base font-black font-display text-slate-900 tracking-tight">
+                      Área do Professor & Gestor
+                    </h3>
+                    <p className="text-[11px] text-slate-500 mt-1.5 max-w-xs mx-auto leading-relaxed">
+                      A página para adicionar arquivos e alterar a senha só poderá ser aberta após sua identificação.
+                    </p>
+
+                    <form onSubmit={handleLoginProfessor} className="mt-5 text-left space-y-3.5">
+                      {profLoginError && (
+                        <div className="p-3 bg-rose-50 border border-rose-150 text-rose-700 text-xs font-semibold rounded-xl flex items-center gap-2">
+                          <XCircle className="h-4 w-4 text-rose-500 shrink-0" />
+                          <span>{profLoginError}</span>
+                        </div>
+                      )}
+
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                          Usuário de Acesso:
+                        </label>
+                        <input
+                          type="text"
+                          value={profLoginUser}
+                          onChange={(e) => setProfLoginUser(e.target.value)}
+                          placeholder="Ex: admin ou suporte"
+                          className="w-full text-xs font-semibold px-3 py-2 bg-slate-50 hover:bg-slate-100/50 border border-slate-205 focus:border-indigo-500 focus:bg-white focus:outline-none rounded-lg transition-all"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                          Senha:
+                        </label>
+                        <input
+                          type="password"
+                          value={profLoginPass}
+                          onChange={(e) => setProfLoginPass(e.target.value)}
+                          placeholder="Digite sua senha"
+                          className="w-full text-xs font-semibold px-3 py-2 bg-slate-50 hover:bg-slate-100/50 border border-slate-205 focus:border-indigo-500 focus:bg-white focus:outline-none rounded-lg transition-all"
+                        />
+                      </div>
+
+                      <div className="pt-2 grid grid-cols-2 gap-2.5">
+                        <button
+                          type="button"
+                          onClick={() => setCurrentTab("simulado")}
+                          className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs uppercase rounded-lg transition-all cursor-pointer text-center"
+                        >
+                          Voltar
+                        </button>
+                        <button
+                          type="submit"
+                          className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs uppercase rounded-lg shadow-xs transition-all cursor-pointer text-center"
+                        >
+                          Identificar
+                        </button>
+                      </div>
+                    </form>
+                  </motion.div>
                 </div>
+              ) : (
+                <motion.div
+                  key="professor-tab"
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -12 }}
+                  transition={{ duration: 0.18 }}
+                  className="grid grid-cols-1 lg:grid-cols-12 gap-5"
+                >
+                  {/* SIDEBAR PROFESSOR: INSTRUÇÕES E PRESETS (COLS: 4) */}
+                  <div className="lg:col-span-4 flex flex-col gap-5">
+                    
+                    <div className="bg-slate-900 text-white rounded-2xl p-5 border border-slate-800 flex flex-col">
+                      <h3 className="text-xs font-bold text-indigo-400 uppercase tracking-widest font-display mb-3">
+                        Configurações do Caderno
+                      </h3>
+                      <p className="text-xs text-slate-400 leading-relaxed mb-4">
+                        Insira novas questões customizadas preenchendo o código JSON no campo de texto ao lado.
+                      </p>
+
+                      <div className="p-3 bg-slate-800/50 border border-slate-700/40 rounded-xl space-y-2 text-[11px] text-slate-350 leading-relaxed mb-4">
+                        <span className="font-bold text-white block mb-1">Passos recomendados:</span>
+                        <p>1. Selecione um dos modelos listados para entender as propriedades padrão.</p>
+                        <p>2. Preencha as chaves: enunciado, alternativas A, B, C, D, E e a resposta correta correspondente.</p>
+                        <p>3. Clique em "Atualizar Banco" para aplicar.</p>
+                      </div>
+
+                      <div className="space-y-2 mt-auto">
+                        <button
+                          type="button"
+                          onClick={() => setShowAlterarSenhaDialog(true)}
+                          className="w-full py-2 px-3 bg-indigo-600 hover:bg-indigo-750 rounded-xl text-xs font-bold text-white transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          <Key className="h-3 w-3" />
+                          Alterar Senha Admin
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleRestaurarQuestoesPadrao}
+                          className="w-full py-2 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-xs font-bold text-white transition-all flex items-center justify-center gap-1 cursor-pointer"
+                        >
+                          <RotateCcw className="h-3 w-3" />
+                          Restaurar Questões Base
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleLogoutProfessor}
+                          className="w-full py-2 px-3 bg-rose-950/45 hover:bg-rose-900/60 border border-rose-900/20 rounded-xl text-xs font-bold text-rose-350 transition-all flex items-center justify-center gap-1 cursor-pointer"
+                        >
+                          <LogOut className="h-3 w-3" />
+                          Sair do Painel
+                        </button>
+                      </div>
+                    </div>
 
                 {/* PRESETS DE INSTANCIAÇÃO RAPIDA */}
                 <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-3">
@@ -1662,7 +2239,7 @@ export default function App() {
                           type="password"
                           value={senhaAdmin}
                           onChange={(e) => setSenhaAdmin(e.target.value)}
-                          placeholder="Digite a senha administrativa (por padrão: admin123)"
+                          placeholder=""
                           className="w-full text-xs font-semibold px-3 py-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
                         />
                       </div>
@@ -1979,7 +2556,377 @@ export default function App() {
 
             </motion.div>
           )}
+        </div>
+      )}
 
+        </AnimatePresence>
+
+        {/* MODAL DE ADICIONAR USUÁRIO E SENHA */}
+        <AnimatePresence>
+          {showUserModal && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 15 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 15 }}
+                className="bg-white rounded-3xl border border-slate-200 max-w-md w-full shadow-2xl p-6 md:p-7 relative overflow-hidden"
+              >
+                {/* Header do modal */}
+                <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-5">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+                      {modalMode === "cadastro" ? <UserPlus className="h-5 w-5" /> : <Key className="h-5 w-5" />}
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-extrabold text-slate-900 font-display">
+                        {modalMode === "cadastro" ? "Adicionar Usuário e Senha" : "Entrar com Usuário Existente"}
+                      </h3>
+                      <p className="text-[11px] text-slate-500">
+                        {modalMode === "cadastro" ? "Crie novas credenciais de estudante" : "Acesse seu histórico e progresso exclusivo"}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setShowUserModal(false);
+                      setUserMsgErro(null);
+                      setUserMsgSucesso(null);
+                      setInputUsuario("");
+                      setInputSenha("");
+                    }}
+                    className="p-1 px-2.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-50 text-xs font-bold transition-all cursor-pointer border border-transparent hover:border-slate-100"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Switcher login / cadastro */}
+                <div className="grid grid-cols-2 bg-slate-50 rounded-xl p-1 mb-5 border border-slate-150">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModalMode("cadastro");
+                      setUserMsgErro(null);
+                      setUserMsgSucesso(null);
+                    }}
+                    className={`py-2 text-[11px] font-bold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                      modalMode === "cadastro" 
+                        ? "bg-white text-indigo-700 shadow-3xs border border-indigo-50 font-extrabold" 
+                        : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    <UserPlus className="h-3.5 w-3.5" />
+                    Novo Usuário
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModalMode("login");
+                      setUserMsgErro(null);
+                      setUserMsgSucesso(null);
+                    }}
+                    className={`py-2 text-[11px] font-bold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                      modalMode === "login" 
+                        ? "bg-white text-indigo-700 shadow-3xs border border-indigo-50 font-extrabold" 
+                        : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    <Key className="h-3.5 w-3.5" />
+                    Acessar Conta
+                  </button>
+                </div>
+
+                {/* Alertas */}
+                {userMsgErro && (
+                  <div className="mb-4 p-3 bg-rose-50 border border-rose-150 text-rose-800 rounded-xl text-xs font-medium flex items-center gap-2">
+                    <XCircle className="h-4 w-4 text-rose-500 shrink-0" />
+                    <span>{userMsgErro}</span>
+                  </div>
+                )}
+                {userMsgSucesso && (
+                  <div className="mb-4 p-3 bg-emerald-50 border border-emerald-150 text-emerald-850 rounded-xl text-xs font-bold flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                    <span>{userMsgSucesso}</span>
+                  </div>
+                )}
+
+                {/* Form Inputs */}
+                <form 
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (modalMode === "cadastro") {
+                      handleAdicionarUsuario(inputUsuario, inputSenha);
+                    } else {
+                      handleLoginUsuario(inputUsuario, inputSenha);
+                    }
+                  }}
+                  className="space-y-4"
+                >
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 font-display">
+                      Identificador / Nome de Usuário
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={inputUsuario}
+                      onChange={(e) => setInputUsuario(e.target.value)}
+                      placeholder="Ex: aluno_joao"
+                      className="w-full text-xs font-semibold px-3 py-2.5 bg-slate-50 focus:bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 font-display">
+                      Senha Secreta
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      value={inputSenha}
+                      onChange={(e) => setInputSenha(e.target.value)}
+                      placeholder="Sua senha secreta de acesso"
+                      className="w-full text-xs font-semibold px-3 py-2.5 bg-slate-50 focus:bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all font-mono"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-750 text-white font-extrabold text-xs tracking-wide uppercase rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer mt-4"
+                  >
+                    {modalMode === "cadastro" ? <UserPlus className="h-4 w-4" /> : <Key className="h-4 w-4" />}
+                    {modalMode === "cadastro" ? "Adicionar Usuário" : "Conectar-se agora"}
+                  </button>
+                </form>
+
+                {/* List de Usuários Cadastrados */}
+                {listaUsuarios.length > 0 && (
+                  <div className="mt-6 pt-5 border-t border-slate-100">
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 font-display">
+                      👥 Usuários Cadastrados no Aparelho ({listaUsuarios.length}):
+                    </span>
+                    <div className="space-y-2 max-h-28 overflow-y-auto pr-1">
+                      {listaUsuarios.map((u) => {
+                        const isActive = usuarioLogado === u.usuario;
+                        return (
+                          <div 
+                            key={u.id} 
+                            className={`flex items-center justify-between p-2.5 rounded-lg text-xs transition-all border ${
+                              isActive 
+                                ? "bg-indigo-50 border-indigo-150 text-indigo-950 font-bold" 
+                                : "bg-slate-50 hover:bg-slate-100/70 border-slate-150 text-slate-700"
+                            }`}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setInputUsuario(u.usuario);
+                                setInputSenha(u.senha);
+                                setModalMode("login");
+                                setUserMsgErro(null);
+                                setUserMsgSucesso(null);
+                              }}
+                              className="flex items-center gap-2 text-left flex-1 cursor-pointer"
+                              title="Clique para preencher as credenciais"
+                            >
+                              <span className="font-mono text-indigo-650">🖧</span>
+                              <div className="truncate">
+                                <span className="font-semibold block leading-tight">{u.usuario}</span>
+                                <span className="text-[10px] text-slate-400 block font-mono">Senha: •••••••</span>
+                              </div>
+                            </button>
+                            <div className="flex items-center gap-1 font-display">
+                              {!isActive && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleLoginUsuario(u.usuario, u.senha)}
+                                  className="px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-[9px] font-extrabold uppercase cursor-pointer"
+                                >
+                                  Entrar
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleDeletarUsuario(u.id, u.usuario)}
+                                className="p-1 text-slate-400 hover:text-rose-600 rounded-md hover:bg-white transition-colors cursor-pointer"
+                                title="Excluir Usuário"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+<AnimatePresence>
+          {dialogConfirmaSimulado && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 15 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 15 }}
+                className="bg-white rounded-3xl border border-slate-200 max-w-md w-full shadow-2xl p-6 relative overflow-hidden"
+              >
+                <div className="flex items-center gap-3 pb-3 border-b border-slate-100 mb-4 text-left">
+                  <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-2xl shrink-0">
+                    <BookMarked className="h-6 w-6" />
+                  </div>
+                  <div className="text-left">
+                    <h3 className="text-sm font-extrabold text-slate-900 font-display">
+                      Confirmar Troca de Simulado?
+                    </h3>
+                    <p className="text-[11px] text-slate-500">
+                      Você selecionou um novo caderno de provas
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 border border-slate-150 rounded-2xl p-4 mb-4 text-left">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1 font-display">
+                    Caderno do Vestibulinho Selecionado:
+                  </span>
+                  <p className="text-xs font-black text-indigo-950 font-display">
+                    {provasSalvas.find(p => p.id === idSimuladoConfirmado)?.label || "Carregando..."}
+                  </p>
+                  <p className="text-[10px] text-slate-500 mt-1.5 font-sans leading-relaxed">
+                    Este caderno contém {(provasSalvas.find(p => p.id === idSimuladoConfirmado)?.id === "padrao" ? bancoDeQuestoesPadrao.length : (provasSalvas.find(p => p.id === idSimuladoConfirmado)?.questoes?.length || 2))} questões oficiais corrigidas com explicações didáticas detalhadas e gabarito inteligente.
+                  </p>
+                </div>
+
+                <div className="text-xs text-amber-800 bg-amber-50 border border-amber-250/60 rounded-xl p-3.5 mb-5 flex items-start gap-2.5 text-left">
+                  <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                  <p className="leading-relaxed">
+                    <strong>Aviso importante:</strong> Ao iniciar, as respostas preenchidas da sessão ativa serão redefinidas. Deseja iniciar este simulado agora?
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDialogConfirmaSimulado(false);
+                      setComboboxSemestre(""); // reset selection
+                    }}
+                    className="py-2.5 bg-slate-105 hover:bg-slate-200 text-slate-700 font-bold text-xs uppercase rounded-xl transition-all cursor-pointer bg-slate-100"
+                  >
+                    Não, Voltar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleCarregarProvaSalva(idSimuladoConfirmado);
+                      setDialogConfirmaSimulado(false);
+                      setComboboxAno("");
+                      setComboboxSemestre("");
+                    }}
+                    className="py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs uppercase rounded-xl shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1"
+                  >
+                    <Check className="h-4 w-4" />
+                    Sim, Começar!
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* MODAL DE ALTERAÇÃO DE SENHA DO PROFESSOR */}
+        <AnimatePresence>
+          {showAlterarSenhaDialog && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 15 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 15 }}
+                className="bg-white rounded-3xl border border-slate-200 max-w-md w-full shadow-2xl p-6 md:p-7 relative overflow-hidden text-left"
+              >
+                <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-5 text-left">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+                      <Key className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-extrabold text-slate-900 font-display">
+                        Alterar Senha de Acesso
+                      </h3>
+                      <p className="text-[11px] text-slate-500">
+                        Defina uma nova credencial administrativa
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setShowAlterarSenhaDialog(false);
+                      setAltSenhaError(null);
+                      setAltSenhaSucesso(false);
+                      setAltSenhaAtual("");
+                      setAltSenhaNova("");
+                    }}
+                    className="p-1 px-2.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-50 text-xs font-bold transition-all cursor-pointer border border-transparent hover:border-slate-100"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <form onSubmit={handleAlterarSenha} className="space-y-4">
+                  {altSenhaError && (
+                    <div className="p-3 bg-rose-50 border border-rose-150 text-rose-700 text-xs font-semibold rounded-xl flex items-center gap-2">
+                      <XCircle className="h-4 w-4 text-rose-600 shrink-0" />
+                      <span>{altSenhaError}</span>
+                    </div>
+                  )}
+
+                  {altSenhaSucesso && (
+                    <div className="p-3 bg-emerald-50 border border-emerald-250 text-emerald-800 text-xs font-bold rounded-xl flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-650 shrink-0" />
+                      <span>Senha atualizada com sucesso!</span>
+                    </div>
+                  )}
+
+                  <div className="space-y-1.5">
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider font-display">
+                      Senha Atual:
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      value={altSenhaAtual}
+                      onChange={(e) => setAltSenhaAtual(e.target.value)}
+                      placeholder="Senha em uso ou suporte"
+                      className="w-full text-xs font-semibold px-3 py-2.5 bg-slate-50 focus:bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider font-display">
+                      Nova Senha:
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      value={altSenhaNova}
+                      onChange={(e) => setAltSenhaNova(e.target.value)}
+                      placeholder="Mínimo 4 caracteres"
+                      className="w-full text-xs font-semibold px-3 py-2.5 bg-slate-50 focus:bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all font-mono"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-750 text-white font-extrabold text-xs tracking-wide uppercase rounded-xl shadow-xs transition-all flex items-center justify-center gap-2 cursor-pointer mt-4"
+                  >
+                    Salvar Nova Senha
+                  </button>
+                </form>
+              </motion.div>
+            </div>
+          )}
         </AnimatePresence>
 
         {/* FOOTER INFORMATIVO GERAL */}
