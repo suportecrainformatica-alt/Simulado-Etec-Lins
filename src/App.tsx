@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { 
   GraduationCap, 
   CheckCircle2, 
@@ -273,8 +273,18 @@ export default function App() {
   const [sucessoNovaProva, setSucessoNovaProva] = useState(false);
 
   // AI & Administrative PDF Upload states
-  const [profSubTab, setProfSubTab] = useState<"ia" | "manual">("ia");
-  const [senhaAdmin, setSenhaAdmin] = useState("");
+  const [profSubTab, setProfSubTab] = useState<"ia" | "manual" | "importar_etec">("ia");
+  const [etecImportAno, setEtecImportAno] = useState<string>("2026");
+  const [etecImportSemestre, setEtecImportSemestre] = useState<string>("1º Semestre");
+  const [etecImportCustomProva, setEtecImportCustomProva] = useState<string>("");
+  const [etecImportCustomGabarito, setEtecImportCustomGabarito] = useState<string>("");
+  const [etecImportProcessando, setEtecImportProcessando] = useState<boolean>(false);
+  const [etecImportLogs, setEtecImportLogs] = useState<string[]>([]);
+  const [etecImportErro, setEtecImportErro] = useState<string | null>(null);
+  const [etecImportSucesso, setEtecImportSucesso] = useState<string | null>(null);
+  const [senhaAdmin, setSenhaAdmin] = useState<string>(() => {
+    return localStorage.getItem("etec_professor_senha_ativa") || "";
+  });
   const [professorIdentificado, setProfessorIdentificado] = useState<boolean>(() => {
     return localStorage.getItem("etec_professor_identificado") === "true";
   });
@@ -346,12 +356,46 @@ export default function App() {
     ];
   });
 
+  useEffect(() => {
+    const sincronizarComServidor = async () => {
+      try {
+        const response = await fetch("/api/provas");
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && Array.isArray(data.provas)) {
+            const formatadas = data.provas.map((p: any) => ({
+              id: p.id,
+              label: p.label,
+              ano: p.ano || "Geral",
+              isPreset: p.isPreset || false,
+              questoes: [] // serão carregadas dinamicamente sob demanda ao clicar
+            }));
+            setProvasSalvas(formatadas);
+            localStorage.setItem("etec_provas_salvas_list", JSON.stringify(formatadas));
+          }
+        }
+      } catch (err) {
+        console.warn("Não foi possível sincronizar biblioteca de simulados com o servidor. Usando cache local.", err);
+      }
+    };
+    sincronizarComServidor();
+  }, []);
+
   // Nome do semestre selecionado no painel de importação (ou auto)
   const [semestreSelectImport, setSemestreSelectImport] = useState<string>("auto");
 
   // --- CONTROLE DE SELEÇÃO DE ANO/SEMESTRE DE SIMULADO ---
   const [comboboxAno, setComboboxAno] = useState<string>("");
   const [comboboxSemestre, setComboboxSemestre] = useState<string>("");
+  const [anoSelecionado, setAnoSelecionado] = useState<string>(() => {
+    return localStorage.getItem("etec_ano_selecionado") || "";
+  });
+  const [semestreSelecionado, setSemestreSelecionado] = useState<string>(() => {
+    return localStorage.getItem("etec_semestre_selecionado") || "";
+  });
+  const [simuladoIniciado, setSimuladoIniciado] = useState<boolean>(() => {
+    return localStorage.getItem("etec_simulado_iniciado") === "true";
+  });
   const [dialogConfirmaSimulado, setDialogConfirmaSimulado] = useState<boolean>(false);
   const [idSimuladoConfirmado, setIdSimuladoConfirmado] = useState<string>("");
 
@@ -463,11 +507,76 @@ export default function App() {
       setProvaEntregue(false);
       setRespostasEnviadasEstudo(false);
       setFiltroMateria("Todas");
+      
+      setAnoSelecionado("Geral");
+      setSemestreSelecionado("Caderno Geral Base");
+      setSimuladoIniciado(true);
+      localStorage.setItem("etec_ano_selecionado", "Geral");
+      localStorage.setItem("etec_semestre_selecionado", "Caderno Geral Base");
+      localStorage.setItem("etec_simulado_iniciado", "true");
 
       const suffix = usuarioLogado ? `_${usuarioLogado}` : "";
       localStorage.removeItem(`etec_respostas${suffix}`);
       localStorage.removeItem(`etec_entregue${suffix}`);
       localStorage.removeItem(`etec_enviado_estudo${suffix}`);
+    }
+  };
+
+  const handleImportarETEC = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setEtecImportProcessando(true);
+    setEtecImportErro(null);
+    setEtecImportSucesso(null);
+    setEtecImportLogs(["[Iniciando] Conectando ao pipeline de importação direta da ETEC..."]);
+
+    const payload = {
+      ano: etecImportAno,
+      semestre: etecImportSemestre,
+      adminPassword: senhaAdmin,
+      customProvaUrl: etecImportCustomProva.trim() || undefined,
+      customGabaritoUrl: etecImportCustomGabarito.trim() || undefined
+    };
+
+    try {
+      const response = await fetch("/api/importar-etec", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setEtecImportLogs(data.logs || ["[Sucesso] Dados importados com êxito!"]);
+        setEtecImportSucesso(data.message || "Prova baixada e catalogada no banco com sucesso!");
+        
+        // Sincroniza a biblioteca de provas para que a nova prova apareça imediatamente
+        const resList = await fetch("/api/provas");
+        if (resList.ok) {
+          const listData = await resList.json();
+          if (listData.success && Array.isArray(listData.provas)) {
+            const formatadas = listData.provas.map((p: any) => ({
+              id: p.id,
+              label: p.label,
+              ano: p.ano || "Geral",
+              isPreset: p.isPreset || false,
+              questoes: []
+            }));
+            setProvasSalvas(formatadas);
+            localStorage.setItem("etec_provas_salvas_list", JSON.stringify(formatadas));
+          }
+        }
+      } else {
+        setEtecImportErro(data.error || "Ocorreu uma falha no processador ao baixar do site da ETEC.");
+        if (data.logs) {
+          setEtecImportLogs(data.logs);
+        }
+      }
+    } catch (err: any) {
+      setEtecImportErro("Falha de comunicação na rede: " + (err.message || String(err)));
+    } finally {
+      setEtecImportProcessando(false);
     }
   };
 
@@ -482,39 +591,70 @@ export default function App() {
     }
   };
 
-  const handleCarregarProvaSalva = (id: string) => {
+  const handleCarregarProvaSalva = async (id: string) => {
     let novasQuestoes: Questao[] = [];
     let nome = "";
+    let ano = "";
+    let semestre = "";
     
-    if (id === "padrao") {
-      novasQuestoes = bancoDeQuestoesPadrao;
-      nome = "Vestibulinho ETEC - Caderno Base Geral";
-    } else if (id === "2026S1") {
-      try {
-        novasQuestoes = JSON.parse(presetProvas.prova2026S1);
-        nome = "Vestibulinho ETEC - 1º Semestre 2026";
-      } catch (e) {
-        console.error("Erro ao carregar pré-configurado 2026S1", e);
+    // Tenta carregar do backend de forma ativa para termos persistência real do banco de dados no servidor
+    try {
+      const response = await fetch(`/api/provas/${id}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.prova) {
+          novasQuestoes = data.prova.questoes;
+          nome = data.prova.label;
+          ano = data.prova.ano || "Geral";
+          semestre = data.prova.semestre || data.prova.label;
+        }
       }
-    } else if (id === "2026S2") {
-      try {
-        novasQuestoes = JSON.parse(presetProvas.prova2026S2);
-        nome = "Vestibulinho ETEC - 2º Semestre 2026";
-      } catch (e) {
-        console.error("Erro ao carregar pré-configurado 2026S2", e);
-      }
-    } else if (id === "2024S1") {
-      try {
-        novasQuestoes = JSON.parse(presetProvas.prova2024S1);
-        nome = "Vestibulinho ETEC - 1º Semestre 2024";
-      } catch (e) {
-        console.error("Erro ao carregar pré-configurado 2024S1", e);
-      }
-    } else {
-      const match = provasSalvas.find(p => p.id === id);
-      if (match) {
-        novasQuestoes = match.questoes;
-        nome = match.label;
+    } catch (e) {
+      console.warn("Falha ao obter prova do servidor. Tentando carregar localmente...", e);
+    }
+
+    // Fallback de contingência local se o servidor estiver inacessível ou reiniciando
+    if (!novasQuestoes || novasQuestoes.length === 0) {
+      if (id === "padrao") {
+        novasQuestoes = bancoDeQuestoesPadrao;
+        nome = "Vestibulinho ETEC - Caderno Base Geral";
+        ano = "Geral";
+        semestre = "Caderno Geral Base";
+      } else if (id === "2026S1") {
+        try {
+          novasQuestoes = JSON.parse(presetProvas.prova2026S1);
+          nome = "Vestibulinho ETEC - 1º Semestre 2026";
+          ano = "2026";
+          semestre = "1º Semestre";
+        } catch (e) {
+          console.error("Erro ao carregar pré-configurado 2026S1", e);
+        }
+      } else if (id === "2026S2") {
+        try {
+          novasQuestoes = JSON.parse(presetProvas.prova2026S2);
+          nome = "Vestibulinho ETEC - 2º Semestre 2026";
+          ano = "2026";
+          semestre = "2º Semestre";
+        } catch (e) {
+          console.error("Erro ao carregar pré-configurado 2026S2", e);
+        }
+      } else if (id === "2024S1") {
+        try {
+          novasQuestoes = JSON.parse(presetProvas.prova2024S1);
+          nome = "Vestibulinho ETEC - 1º Semestre 2024";
+          ano = "2024";
+          semestre = "1º Semestre";
+        } catch (e) {
+          console.error("Erro ao carregar pré-configurado 2024S1", e);
+        }
+      } else {
+        const match = provasSalvas.find(p => p.id === id);
+        if (match) {
+          novasQuestoes = match.questoes;
+          nome = match.label;
+          ano = match.ano || "Geral";
+          semestre = match.label;
+        }
       }
     }
 
@@ -527,27 +667,68 @@ export default function App() {
       setProvaEntregue(false);
       setRespostasEnviadasEstudo(false);
       setFiltroMateria("Todas");
+      setAnoSelecionado(ano);
+      setSemestreSelecionado(semestre);
+      setSimuladoIniciado(true);
+      localStorage.setItem("etec_ano_selecionado", ano);
+      localStorage.setItem("etec_semestre_selecionado", semestre);
+      localStorage.setItem("etec_simulado_iniciado", "true");
     }
   };
 
-  const handleExcluirProvaSalva = (id: string) => {
-    if (window.confirm("Deseja realmente excluir essa prova importada de sua biblioteca?")) {
-      const filtrado = provasSalvas.filter(p => p.id !== id);
-      setProvasSalvas(filtrado);
-      localStorage.setItem("etec_provas_salvas_list", JSON.stringify(filtrado));
-      
-      // Se era a prova ativa, retorna para a padrão
-      const match = provasSalvas.find(p => p.id === id);
-      if (match && provaAtivaNome === match.label) {
-        setBancoQuestoes(bancoDeQuestoesPadrao);
-        localStorage.setItem("etec_banco_questoes", JSON.stringify(bancoDeQuestoesPadrao));
-        setProvaAtivaNome("Vestibulinho ETEC - Caderno Base Geral");
-        localStorage.setItem("etec_prova_ativa_nome", "Vestibulinho ETEC - Caderno Base Geral");
-        setRespostas({});
-        setProvaEntregue(false);
-        setRespostasEnviadasEstudo(false);
-        setFiltroMateria("Todas");
+  const handleExcluirProvaSalva = async (id: string) => {
+    // Oferece exclusão física no banco de dados do servidor
+    const adminPass = window.prompt(
+      "Digite a senha de administrador para excluir esta prova de forma definitiva do banco do servidor (ou cancele/deixe em branco para remover apenas localmente):"
+    );
+
+    if (adminPass !== null && adminPass.trim() !== "") {
+      try {
+        const response = await fetch(`/api/provas/${id}`, {
+          method: "DELETE",
+          headers: {
+            "Authorization": adminPass
+          }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          alert(data.message || "Prova removida de forma permanente do banco de dados do servidor!");
+        } else {
+          const data = await response.json();
+          alert("Erro ao excluir do servidor: " + (data.error || "Senha inválida ou sem autorização."));
+          return;
+        }
+      } catch (err) {
+        alert("Erro na rede ao tentar comunicar com o servidor. Operação abortada.");
+        return;
       }
+    } else {
+      if (!window.confirm("Deseja remover essa prova provisoriamente de sua visualização no navegador? (Ela continuará persistente no servidor)")) {
+        return;
+      }
+    }
+
+    // Processamento de exclusão local no estado do react
+    const filtrado = provasSalvas.filter(p => p.id !== id);
+    setProvasSalvas(filtrado);
+    localStorage.setItem("etec_provas_salvas_list", JSON.stringify(filtrado));
+    
+    // Se era a prova em execução, retorna para o caderno padrão geral base
+    const match = provasSalvas.find(p => p.id === id);
+    if (match && provaAtivaNome === match.label) {
+      setBancoQuestoes(bancoDeQuestoesPadrao);
+      localStorage.setItem("etec_banco_questoes", JSON.stringify(bancoDeQuestoesPadrao));
+      setProvaAtivaNome("Vestibulinho ETEC - Caderno Base Geral");
+      localStorage.setItem("etec_prova_ativa_nome", "Vestibulinho ETEC - Caderno Base Geral");
+      setRespostas({});
+      setProvaEntregue(false);
+      setRespostasEnviadasEstudo(false);
+      setFiltroMateria("Todas");
+      setAnoSelecionado("Geral");
+      setSemestreSelecionado("Caderno Geral Base");
+      localStorage.setItem("etec_ano_selecionado", "Geral");
+      localStorage.setItem("etec_semestre_selecionado", "Caderno Geral Base");
+      localStorage.setItem("etec_simulado_iniciado", "false");
     }
   };
 
@@ -662,7 +843,7 @@ export default function App() {
         gabaritoData = await readFileAsBase64(arquivoGabarito);
       }
 
-      setMsgIA("Conectando ao modelo de Inteligência Artificial para extração completa (média de 60 questões)...");
+      setMsgIA("Conectando ao modelo de Inteligência Artificial para extração completa de todas as questões do documento...");
       const resp = await fetch("/api/import-questions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -797,6 +978,7 @@ export default function App() {
       setProfessorIdentificado(true);
       localStorage.setItem("etec_professor_identificado", "true");
       setSenhaAdmin(passClean); // prefill with current logged in password
+      localStorage.setItem("etec_professor_senha_ativa", passClean);
       setProfLoginUser("");
       setProfLoginPass("");
       setProfLoginError(null);
@@ -809,6 +991,7 @@ export default function App() {
     setProfessorIdentificado(false);
     localStorage.setItem("etec_professor_identificado", "false");
     setSenhaAdmin("");
+    localStorage.removeItem("etec_professor_senha_ativa");
   };
 
   const handleAlterarSenha = async (e: React.FormEvent) => {
@@ -845,6 +1028,7 @@ export default function App() {
       setProfessorSenhaCustom(nova);
       localStorage.setItem("etec_professor_senha_custom", nova);
       setSenhaAdmin(nova); // update active key
+      localStorage.setItem("etec_professor_senha_ativa", nova);
 
       setAltSenhaSucesso(true);
       setAltSenhaAtual("");
@@ -934,58 +1118,6 @@ export default function App() {
           </div>
           
           <div className="flex flex-wrap items-center gap-2.5">
-            {/* Perfil do Estudante / Botão Adicionar Usuário e Senha */}
-            <div className="flex flex-wrap items-center gap-2 bg-slate-50 border border-slate-205 rounded-xl p-1 shadow-3xs">
-              {usuarioLogado ? (
-                <div className="flex items-center gap-1.5 pl-2.5 pr-1">
-                  <span className="text-xs font-extrabold text-slate-700">
-                    Estudante: <span className="text-indigo-600 font-black">{usuarioLogado}</span>
-                  </span>
-                  <button
-                    onClick={handleLogoutUsuario}
-                    className="p-1 text-slate-400 hover:text-rose-600 rounded-md hover:bg-rose-50 transition-colors cursor-pointer flex items-center justify-center ml-0.5"
-                    title="Sair do Perfil"
-                  >
-                    <LogOut className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-1">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-2.5 block">
-                    👤 Anônimo
-                  </span>
-                </div>
-              )}
-              
-              <button
-                onClick={() => {
-                  setModalMode("cadastro");
-                  setShowUserModal(true);
-                  setUserMsgErro(null);
-                  setUserMsgSucesso(null);
-                }}
-                className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-black tracking-tight uppercase transition-all shadow-3xs hover:shadow-2xs cursor-pointer flex items-center gap-1 font-display"
-              >
-                <UserPlus className="h-3 w-3" />
-                Adicionar Usuário e Senha
-              </button>
-              
-              {listaUsuarios.length > 0 && !usuarioLogado && (
-                <button
-                  onClick={() => {
-                    setModalMode("login");
-                    setShowUserModal(true);
-                    setUserMsgErro(null);
-                    setUserMsgSucesso(null);
-                  }}
-                  className="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-[10px] font-black tracking-tight uppercase transition-all cursor-pointer flex items-center gap-1 font-display"
-                >
-                  <Key className="h-3 w-3" />
-                  Entrar
-                </button>
-              )}
-            </div>
-
             <div className="px-3.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-600 flex items-center gap-1.5 shadow-3xs">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
               Sessão de Estudo Ativa
@@ -1141,12 +1273,24 @@ export default function App() {
                     <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest font-display">
                       Progresso
                     </h2>
-                    <span className="text-[10px] font-bold font-mono bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md">
-                      {totalQuestõesFeitas} de {totalQuestoesAtuais}
-                    </span>
+                    {simuladoIniciado && (
+                      <span className="text-[10px] font-bold font-mono bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md">
+                        {totalQuestõesFeitas} de {totalQuestoesAtuais}
+                      </span>
+                    )}
                   </div>
 
-                  {totalQuestoesAtuais > 0 ? (
+                  {!simuladoIniciado ? (
+                    <div className="py-2 text-center flex flex-col items-center">
+                      <div className="p-2.5 bg-slate-50 border border-slate-100 rounded-2xl mb-2">
+                        <BookOpen className="h-5 w-5 text-indigo-400" />
+                      </div>
+                      <p className="text-xs font-bold text-slate-900 font-display">Aguardando Simulado</p>
+                      <p className="text-[10px] text-slate-500 mt-1 max-w-xs leading-relaxed">
+                        Escolha o Ano e o Semestre da prova para carregar o seu progresso do simulador.
+                      </p>
+                    </div>
+                  ) : totalQuestoesAtuais > 0 ? (
                     <div>
                       {/* Grid de bolinhas interativas da prova */}
                       <div className="grid grid-cols-5 gap-2">
@@ -1215,7 +1359,7 @@ export default function App() {
                   )}
 
                   {/* Barra de Progresso Real */}
-                  {totalQuestoesAtuais > 0 && (
+                  {simuladoIniciado && totalQuestoesAtuais > 0 && (
                     <div className="mt-2 bg-slate-50 p-3 rounded-xl border border-slate-100">
                       <div className="flex justify-between text-[10px] font-bold text-slate-500 mb-1">
                         <span>Marcado</span>
@@ -1314,11 +1458,11 @@ export default function App() {
                       <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">
                         Caderno Ativo
                       </span>
-                      <span className="text-xs font-bold font-mono text-emerald-400 block mt-0.5 truncate max-w-[220px]">
-                        {provaAtivaNome}
+                      <span className={`text-xs font-bold font-mono block mt-0.5 truncate max-w-[220px] ${simuladoIniciado ? "text-emerald-400" : "text-amber-400"}`}>
+                        {simuladoIniciado ? provaAtivaNome : "Aguardando seleção..."}
                       </span>
-                      <span className="text-[10px] text-indigo-305 font-semibold block mt-1">
-                        ({bancoQuestoes.length} questões carregadas)
+                      <span className="text-[10px] text-indigo-300 font-semibold block mt-1">
+                        {simuladoIniciado ? `(${bancoQuestoes.length} questões carregadas)` : "(Nenhuma questão carregada)"}
                       </span>
                     </div>
                   </div>
@@ -1433,8 +1577,31 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* CARD C: FILTROS DE ESTUDO & TIPO SELEÇÃO (BENTO) */}
-                <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
+                {!simuladoIniciado ? (
+                  <div className="bg-white rounded-2xl border border-slate-200 p-8 sm:p-12 text-center shadow-3xs relative overflow-hidden flex flex-col items-center justify-center min-h-[340px]">
+                    {/* Efeitos decorativos */}
+                    <div className="absolute top-0 left-0 w-24 h-24 bg-gradient-to-br from-indigo-50/20 to-transparent blur-xl pointer-events-none"></div>
+                    <div className="absolute bottom-0 right-0 w-32 h-32 bg-gradient-to-tr from-amber-500/10 to-transparent blur-2xl pointer-events-none"></div>
+
+                    <div className="p-4 bg-slate-50 border border-slate-100 rounded-3xl mb-4.5 text-slate-800">
+                      <GraduationCap className="h-10 w-10 text-indigo-600 font-bold" />
+                    </div>
+                    
+                    <h3 className="text-lg font-black text-slate-900 tracking-tight font-display">
+                      Nenhum Simulado Ativo
+                    </h3>
+                    <p className="text-xs text-slate-550 mt-2 max-w-sm mx-auto leading-relaxed">
+                      Selecione o <strong>Ano</strong> e depois o <strong>Semestre</strong> desejado no seletor de provas acima para carregar o Simulado do Vestibulinho ETEC com gabarito inteligente e explicações.
+                    </p>
+                    <div className="mt-5 flex items-center gap-1.5 text-[11px] text-slate-400 bg-slate-50 border border-slate-150 px-3 py-1.5 rounded-xl font-medium">
+                      <Sparkles className="h-3.5 w-3.5 text-indigo-500 shrink-0" />
+                      Gabarito e explicação de todas as questões do vestibulinho!
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {/* CARD C: FILTROS DE ESTUDO & TIPO SELEÇÃO (BENTO) */}
+                    <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div>
                       <h3 className="text-sm font-bold text-slate-900 font-display flex items-center gap-1.5">
@@ -1864,6 +2031,7 @@ export default function App() {
                   </div>
                 )}
 
+              </>)}
               </div>
             </motion.div>
           )}
@@ -2212,6 +2380,23 @@ export default function App() {
                       />
                     )}
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setProfSubTab("importar_etec")}
+                    className={`pb-3 px-4 font-display text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all relative cursor-pointer ${
+                      profSubTab === "importar_etec" ? "text-indigo-650 font-extrabold" : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    <Download className="h-4 w-4 shrink-0 text-slate-500" />
+                    Importação Direta ETEC (Auto)
+                    {profSubTab === "importar_etec" && (
+                      <motion.div
+                        layoutId="activeSubTabUnderline"
+                        className="absolute bottom-0 left-0 right-0 h-[2px] bg-indigo-650"
+                      />
+                    )}
+                  </button>
                 </div>
 
                 {/* Sub Tab IA Content */}
@@ -2224,25 +2409,6 @@ export default function App() {
                       <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
                         Arraste e solte o arquivo da prova do Vestibulinho ETEC (PDF ou Texto) e, opcionalmente, o arquivo de gabarito. Nossa IA lerá todo o conteúdo, extrairá em média 50 a 60 questões, associará os pesos e preencherá as explicações.
                       </p>
-                    </div>
-
-                    {/* ADMIN PASSWORD BLOCK */}
-                    <div className="bg-slate-50 border border-slate-150 rounded-xl p-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-3.5 shadow-3xs">
-                      <div className="flex items-center gap-2 text-slate-700 shrink-0">
-                        <div className="p-1.5 bg-slate-200/60 rounded-lg">
-                          <Key className="h-4 w-4 text-slate-500" />
-                        </div>
-                        <span className="text-xs font-bold leading-none">Chave Admin:</span>
-                      </div>
-                      <div className="flex-1 relative">
-                        <input
-                          type="password"
-                          value={senhaAdmin}
-                          onChange={(e) => setSenhaAdmin(e.target.value)}
-                          placeholder=""
-                          className="w-full text-xs font-semibold px-3 py-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                        />
-                      </div>
                     </div>
 
                     {/* SELEÇÃO DO SEMESTRE / ANO DA PROVA */}
@@ -2549,6 +2715,213 @@ export default function App() {
                       <UploadCloud className="h-4 w-4 shrink-0" />
                       Carregar e atualizar caderno de estudos
                     </button>
+                  </div>
+                )}
+
+                {/* Sub Tab Importação Direta ETEC Content */}
+                {profSubTab === "importar_etec" && (
+                  <div className="space-y-6">
+                    <div>
+                      <h3 className="font-bold text-slate-900 text-sm font-display flex items-center gap-1.5">
+                        <Download className="h-4.5 w-4.5 text-indigo-600" />
+                        Importador Direto do Portal ETEC (Centro Paula Souza)
+                      </h3>
+                      <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
+                        Nossos robôs buscarão o Caderno de Questões e o Gabarito diretamente dos links de arquivo do vestibulinhoetec.com.br. A Inteligência Artificial fará a leitura e estruturação para alimentar imediatamente o banco de dados do simulador.
+                      </p>
+                    </div>
+
+                    <form onSubmit={handleImportarETEC} className="space-y-4 bg-slate-50 border border-slate-205/60 p-4 sm:p-5 rounded-2xl">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">
+                            Ano da Prova:
+                          </label>
+                          <input
+                            type="number"
+                            min="2010"
+                            max="2030"
+                            value={etecImportAno}
+                            onChange={(e) => setEtecImportAno(e.target.value)}
+                            placeholder="Ex: 2026"
+                            className="w-full text-xs font-semibold px-3.5 py-2.5 bg-white border border-slate-200 focus:border-indigo-500 focus:outline-none rounded-xl"
+                            required
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">
+                            Semestre:
+                          </label>
+                          <select
+                            value={etecImportSemestre}
+                            onChange={(e) => setEtecImportSemestre(e.target.value)}
+                            className="w-full text-xs font-semibold px-3.5 py-2.5 bg-white border border-slate-200 focus:border-indigo-500 focus:outline-none rounded-xl cursor-pointer"
+                          >
+                            <option value="1º Semestre">1º Semestre (Início do Ano)</option>
+                            <option value="2º Semestre">2º Semestre (Metade do Ano)</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* URL OVERRIDES EXPANDABLE CONTROLS */}
+                      <details className="text-xs group border border-slate-200 rounded-xl bg-white/70 overflow-hidden">
+                        <summary className="px-3.5 py-2.5 font-bold text-slate-600 cursor-pointer select-none flex items-center justify-between group-open:bg-slate-50 transition-colors">
+                          <span>Ajustes Avançados (Manusear links dos PDFs)</span>
+                          <span className="text-[10px] text-indigo-650 font-extrabold uppercase shrink-0 transition-transform group-open:rotate-180">▼</span>
+                        </summary>
+                        <div className="p-3.5 space-y-3 border-t border-slate-150">
+                          <div className="space-y-1">
+                            <label className="text-[9px] font-extrabold text-slate-400 uppercase block">
+                              Link customizado da Prova (PDF) - Opcional:
+                            </label>
+                            <input
+                              type="url"
+                              value={etecImportCustomProva}
+                              onChange={(e) => setEtecImportCustomProva(e.target.value)}
+                              placeholder="Formato: https://www.vestibulinhoetec.com.br/... .pdf"
+                              className="w-full text-[11px] px-3 py-2 bg-slate-50 hover:bg-slate-100/50 border border-slate-200 focus:outline-none rounded-lg focus:bg-white"
+                            />
+                            <p className="text-[9px] text-slate-400 italic">
+                              Deixe em branco para o app montar a URL oficial do vestibulinho automaticamente.
+                            </p>
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="text-[9px] font-extrabold text-slate-400 uppercase block">
+                              Link customizado do Gabarito (PDF) - Opcional:
+                            </label>
+                            <input
+                              type="url"
+                              value={etecImportCustomGabarito}
+                              onChange={(e) => setEtecImportCustomGabarito(e.target.value)}
+                              placeholder="Formato: https://www.vestibulinhoetec.com.br/... .pdf"
+                              className="w-full text-[11px] px-3 py-2 bg-slate-50 hover:bg-slate-100/50 border border-slate-200 focus:outline-none rounded-lg focus:bg-white"
+                            />
+                          </div>
+                        </div>
+                      </details>
+
+                      {/* LOGS E ERRO DO SISTEMA */}
+                      {(etecImportLogs.length > 0 || etecImportErro || etecImportSucesso) && (
+                        <div className="p-4 bg-slate-900 text-slate-100 rounded-2xl text-[11px] font-mono leading-relaxed space-y-3.5 border border-slate-800 shadow-inner">
+                          <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                            <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-widest">Logs de Processamento ETEC:</span>
+                            {etecImportProcessando && (
+                              <span className="text-[9px] text-indigo-400 font-semibold flex items-center gap-1.5 animate-pulse">
+                                <Loader2 className="h-3 w-3 animate-spin text-indigo-400" /> Buscando...
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="max-h-40 overflow-y-auto space-y-1 block pr-2 custom-scrollbar">
+                            {etecImportLogs.map((log, lIdx) => (
+                              <div key={lIdx} className="text-slate-300">{log}</div>
+                            ))}
+                          </div>
+
+                          {etecImportErro && (
+                            <div className="p-3.5 bg-rose-950/70 border border-rose-900/35 text-rose-300 rounded-xl font-sans text-xs font-semibold">
+                              ❌ {etecImportErro}
+                            </div>
+                          )}
+
+                          {etecImportSucesso && (
+                            <div className="p-3.5 bg-emerald-950/70 border border-emerald-950/35 text-emerald-300 rounded-xl font-sans text-xs font-semibold">
+                              🎉 {etecImportSucesso}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      <button
+                        type="submit"
+                        disabled={etecImportProcessando}
+                        className={`w-full py-4 rounded-xl text-xs sm:text-sm font-extrabold font-display transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                          etecImportProcessando
+                            ? "bg-slate-200 text-slate-400 cursor-not-allowed"
+                            : "bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-150 active:scale-[0.985]"
+                        }`}
+                      >
+                        {etecImportProcessando ? (
+                          <>
+                            <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                            Pesquisando no Portal e Mapeando com IA (Aguarde)...
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="h-4 w-4 shrink-0 text-amber-300 fill-amber-300/20 animate-pulse" />
+                            🌟 Iniciar Inserção Automática ETEC
+                          </>
+                        )}
+                      </button>
+                    </form>
+
+                    {/* BANCO DE DADOS DE PROVAS & EXCLUSÃO DE PROVAS E GABARITOS */}
+                    <div className="pt-4 border-t border-slate-150">
+                      <div className="flex items-center justify-between mb-4">
+                        <div>
+                          <h4 className="font-extrabold text-slate-900 text-xs sm:text-sm font-display">
+                            Gerenciador de Provas no Banco de Dados
+                          </h4>
+                          <p className="text-[11px] text-slate-500 mt-0.5">
+                            Exclua exames e gabaritos importados de forma definitiva para gerenciar e ter o controle pleno do servidor.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-2.5 max-h-[290px] overflow-y-auto pr-1">
+                        {provasSalvas.map((p) => {
+                          const idOriginal = p.id;
+                          return (
+                            <div
+                              key={p.id}
+                              className="flex items-center justify-between p-3.5 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200/70 transition-colors"
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0 pr-3">
+                                <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg shrink-0">
+                                  <BookOpen className="h-3.5 w-3.5" />
+                                </div>
+                                <div className="min-w-0">
+                                  <h5 className="text-[11px] font-black text-slate-805 truncate leading-snug">
+                                    {p.label}
+                                  </h5>
+                                  <div className="flex items-center gap-2 mt-0.5 text-[9px] text-slate-500 font-semibold">
+                                    <span>Ano: {p.ano}</span>
+                                    <span>•</span>
+                                    <span>ID: {p.id}</span>
+                                    {p.isPreset && (
+                                      <>
+                                        <span>•</span>
+                                        <span className="text-indigo-600 bg-indigo-50 px-1 py-0.2 rounded font-black uppercase text-[8px]">Presets</span>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => handleCarregarProvaSalva(idOriginal)}
+                                  className="py-1 px-2.5 bg-white hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 text-indigo-600 text-[10px] font-bold rounded-lg cursor-pointer transition-all shrink-0"
+                                >
+                                  Iniciar
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleExcluirProvaSalva(idOriginal)}
+                                  className="p-1 px-[7px] bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-250 text-rose-500 text-[10px] font-bold rounded-lg cursor-pointer transition-all shrink-0 flex items-center justify-center gap-0.5"
+                                  title="Remover Prova"
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
                 )}
 
